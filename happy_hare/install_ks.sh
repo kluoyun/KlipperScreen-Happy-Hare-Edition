@@ -13,8 +13,22 @@ SCRIPTPATH="$(dirname "$SCRIPT")"
 SCRIPTNAME="$0"
 ARGS=( "$@" )
 
+KLIPPERSCREEN_DIR="${HOME}/KlipperScreen"
 KLIPPER_CONFIG_HOME="${HOME}/printer_data/config"
 OLD_KLIPPER_CONFIG_HOME="${HOME}/klipper_config"
+
+OS_FLYOS_FAST="flyos-fast"
+OS_TYPE=""
+if [ $(sed -n 's/^NAME="\(.*\)"/\1/p' /etc/os-release 2>/dev/null) = "FlyOS-Fast" ]; then
+    OS_TYPE="${OS_FLYOS_FAST}"
+    echo "Detected FlyOS-Fast"
+fi
+
+if [ "$OS_TYPE" = "$OS_FLYOS_FAST" ]; then
+    KLIPPERSCREEN_DIR="/data/KlipperScreen"
+    KLIPPER_CONFIG_HOME="/usr/share/printer_data/config"
+    OLD_KLIPPER_CONFIG_HOME="/data/klipper_config"
+fi
 
 set -e # Exit immediately on error
 
@@ -114,6 +128,10 @@ function nextsuffix {
 }
 
 verify_not_root() {
+    if [ "$OS_TYPE" = "$OS_FLYOS_FAST" ]; then
+        echo -e "${WARNING}This script is run on a ${OS_TYPE} system, so we want it to be run as root"
+        return
+    fi
     if [ "$EUID" -eq 0 ]; then
         echo -e "${ERROR}This script must not run as root"
         exit -1
@@ -189,7 +207,7 @@ EOF
     done
 
     # Always ensure images are linked for every style
-    for style in `ls -d ${HOME}/KlipperScreen/styles/*/images`; do
+    for style in `ls -d ${KLIPPERSCREEN_DIR}/styles/*/images`; do
         for img in `ls ${SRCDIR}/images`; do
             ln -sf "${SRCDIR}/images/${img}" "${style}/${img}"
         done
@@ -252,7 +270,11 @@ install_update_manager() {
 
 restart_klipperscreen() {
     echo -e "${INFO}Restarting KlipperScreen..."
-    sudo systemctl restart KlipperScreen
+    if [ "$OS_TYPE" = "$OS_FLYOS_FAST" ]; then
+        sudo systemctl restart klipperscreen
+    else
+        sudo systemctl restart KlipperScreen
+    fi
 }
 
 restart_moonraker() {
@@ -292,7 +314,11 @@ verify_not_root
 }
 verify_home_dirs
 install_klipper_screen
-install_update_manager
+if [ "$OS_TYPE" = "$OS_FLYOS_FAST" ]; then
+    echo -e "${WARNING}Skipping update manager install on ${OS_TYPE} system"
+else
+    install_update_manager
+fi
 
 echo -e "${EMPHASIZE}"
 echo "Done.  Enjoy KlipperScreen Happy Hare Edition!"
